@@ -9,7 +9,7 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 )
 
-const ResourcesPageSize uint = 1
+const ResourcesPageSize uint = 50
 
 func annotationsForUserResourceType() annotations.Annotations {
 	annos := annotations.Annotations{}
@@ -39,7 +39,7 @@ func parsePageToken(i string, resourceID *v2.ResourceId) (*pagination.Bag, uint,
 	return b, page, nil
 }
 
-// convertPageToken converts a string token into an int.
+// convertPageToken converts a string token into an uint.
 func convertPageToken(token string) (uint, error) {
 	if token == "" {
 		return 0, nil
@@ -54,7 +54,9 @@ func convertPageToken(token string) (uint, error) {
 }
 
 // prepareNextToken prepares the next page token.
-// If the total is 0, there are no more pages.
+// List responses return number of total items across all pages.
+// Offset is zero based index of items, not pages.
+// This means we have to increase the offset by the number of items per page to get to the next page.
 func prepareNextToken(offset, total uint) string {
 	var token string
 
@@ -62,9 +64,10 @@ func prepareNextToken(offset, total uint) string {
 		return token
 	}
 
-	if offset+1 >= total {
+	newOffset := offset + ResourcesPageSize
+	if newOffset >= total {
 		return token
 	}
 
-	return fmt.Sprint(offset + 1)
+	return fmt.Sprint(newOffset)
 }
