@@ -19,6 +19,7 @@ type ArubaCentral struct {
 func (ac *ArubaCentral) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
 	return []connectorbuilder.ResourceSyncer{
 		newUserBuilder(ac.client),
+		newRoleBuilder(ac.client),
 	}
 }
 

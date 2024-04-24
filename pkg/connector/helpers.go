@@ -3,10 +3,13 @@ package connector
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
+	"github.com/conductorone/baton-aruba-central/pkg/arubacentral"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const ResourcesPageSize uint = 50
@@ -70,4 +73,37 @@ func prepareNextToken(offset, total uint) string {
 	}
 
 	return fmt.Sprint(newOffset)
+}
+
+func getValuesFromProfile[T arubacentral.ProtoValue](profile *structpb.Struct, k string, val T) ([]T, bool) {
+	var values []T
+	if profile == nil {
+		return nil, false
+	}
+
+	v, ok := profile.Fields[k]
+	if !ok {
+		return nil, false
+	}
+
+	s, ok := v.Kind.(*structpb.Value_ListValue)
+	if !ok {
+		return nil, false
+	}
+
+	for _, v := range s.ListValue.Values {
+		err := val.Unmarshall(v)
+		if err != nil {
+			return nil, false
+		}
+
+		values = append(values, val)
+	}
+
+	return values, true
+}
+
+func slugify(s string) string {
+	lower := strings.ToLower(s)
+	return strings.ReplaceAll(lower, " ", "-")
 }
