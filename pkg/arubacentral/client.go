@@ -9,6 +9,11 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
 )
 
+const (
+	UsersEndpoint = "/platform/rbac/v1/users"
+	RolesEndpoint = "/platform/rbac/v1/roles"
+)
+
 type Client struct {
 	httpClient *uhttp.BaseHttpClient
 	baseHost   string
@@ -30,11 +35,9 @@ func NewPaginationVars(limit, offset uint) *PaginationVars {
 	return &PaginationVars{Limit: limit, Offset: offset}
 }
 
-func (pgVars *PaginationVars) Apply(req *http.Request) {
-	query := url.Values{}
-	query.Set("limit", fmt.Sprint(pgVars.Limit))
-	query.Set("offset", fmt.Sprint(pgVars.Offset))
-	req.URL.RawQuery = query.Encode()
+func (pgVars *PaginationVars) Apply(params *url.Values) {
+	params.Set("limit", fmt.Sprint(pgVars.Limit))
+	params.Set("offset", fmt.Sprint(pgVars.Offset))
 }
 
 type ListResponse[T any] struct {
@@ -55,7 +58,7 @@ func (c *Client) ListUsers(ctx context.Context, pgVars *PaginationVars) ([]User,
 	u := &url.URL{
 		Scheme: "https",
 		Host:   c.baseHost,
-		Path:   "/platform/rbac/v1/users",
+		Path:   UsersEndpoint,
 	}
 
 	req, err := c.httpClient.NewRequest(ctx, http.MethodGet, u)
@@ -63,9 +66,43 @@ func (c *Client) ListUsers(ctx context.Context, pgVars *PaginationVars) ([]User,
 		return nil, 0, err
 	}
 
-	pgVars.Apply(req)
+	params := &url.Values{}
+	pgVars.Apply(params)
+	req.URL.RawQuery = params.Encode()
 
 	var res ListResponse[User]
+	resp, err := c.httpClient.Do(
+		req,
+		uhttp.WithJSONResponse(&res),
+		uhttp.WithErrorResponse(&ErrorResponse{}),
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	defer resp.Body.Close()
+
+	return res.Items, res.Total, nil
+}
+
+func (c *Client) ListRoles(ctx context.Context, pgVars *PaginationVars) ([]Role, uint, error) {
+	u := &url.URL{
+		Scheme: "https",
+		Host:   c.baseHost,
+		Path:   RolesEndpoint,
+	}
+
+	req, err := c.httpClient.NewRequest(ctx, http.MethodGet, u)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	params := &url.Values{}
+	pgVars.Apply(params)
+	params.Set("app_name", "nms")
+	req.URL.RawQuery = params.Encode()
+
+	var res ListResponse[Role]
 	resp, err := c.httpClient.Do(
 		req,
 		uhttp.WithJSONResponse(&res),
