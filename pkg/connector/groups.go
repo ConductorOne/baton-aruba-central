@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/conductorone/baton-aruba-central/pkg/arubacentral"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -97,24 +96,17 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	}
 
 	var rv []*v2.Grant
-UsersLoop:
 	for _, user := range users {
-		for _, app := range user.Applications {
-			for _, info := range app.Info {
-				if !slices.Contains(info.Scope.Groups, resource.Id.Resource) {
-					continue
-				}
-
-				uID, err := rs.NewResourceID(userResourceType, user.Username)
-				if err != nil {
-					return nil, "", nil, fmt.Errorf("failed to create user resource id: %w", err)
-				}
-
-				rv = append(rv, grant.NewGrant(resource, GroupMembershipEntitlement, uID))
-
-				continue UsersLoop
-			}
+		if !user.ContainsGroup(resource.Id.Resource) {
+			continue
 		}
+
+		uID, err := rs.NewResourceID(userResourceType, user.Username)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("failed to create user resource id: %w", err)
+		}
+
+		rv = append(rv, grant.NewGrant(resource, GroupMembershipEntitlement, uID))
 	}
 
 	nextPage := prepareNextToken(offset, total)

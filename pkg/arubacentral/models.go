@@ -1,6 +1,8 @@
 package arubacentral
 
 import (
+	"slices"
+
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -19,6 +21,18 @@ type User struct {
 			} `json:"scope"`
 		} `json:"info"`
 	} `json:"applications"`
+}
+
+func (u *User) ContainsGroup(group string) bool {
+	for _, app := range u.Applications {
+		for _, info := range app.Info {
+			if slices.Contains(info.Scope.Groups, group) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 type ProtoValue interface {
