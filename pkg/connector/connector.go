@@ -20,6 +20,7 @@ func (ac *ArubaCentral) ResourceSyncers(ctx context.Context) []connectorbuilder.
 	return []connectorbuilder.ResourceSyncer{
 		newUserBuilder(ac.client),
 		newRoleBuilder(ac.client),
+		newGroupBuilder(ac.client),
 	}
 }
 
