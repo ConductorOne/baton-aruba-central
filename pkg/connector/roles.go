@@ -75,9 +75,9 @@ func (r *roleBuilder) List(ctx context.Context, _ *v2.ResourceId, pToken *pagina
 	}
 
 	pgVars := arubacentral.NewPaginationVars(ResourcesPageSize, offset)
-	roles, total, err := r.client.ListRoles(ctx, pgVars)
+	roles, total, rl, err := r.client.ListRoles(ctx, pgVars)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to list roles: %w", err)
+		return nil, "", annotations.New(rl), fmt.Errorf("failed to list roles: %w", err)
 	}
 
 	var rv []*v2.Resource
@@ -96,7 +96,7 @@ func (r *roleBuilder) List(ctx context.Context, _ *v2.ResourceId, pToken *pagina
 		return nil, "", nil, fmt.Errorf("failed to create next token: %w", err)
 	}
 
-	return rv, next, nil, nil
+	return rv, next, annotations.New(rl), nil
 }
 
 func (r *roleBuilder) Entitlements(ctx context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {

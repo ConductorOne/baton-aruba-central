@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
+	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
 )
 
@@ -55,7 +56,23 @@ func (e *ErrorResponse) Message() string {
 	return fmt.Sprintf("error: %s, status code: %d", e.Error, e.Code)
 }
 
-func (c *Client) ListUsers(ctx context.Context, pgVars *PaginationVars) ([]User, uint, error) {
+func WithRatelimitData(resource *v2.RateLimitDescription) uhttp.DoOption {
+	return func(resp *uhttp.WrapperResponse) error {
+		rl, err := extractRateLimitData(resp.StatusCode, &resp.Header)
+		if err != nil {
+			return err
+		}
+
+		resource.Limit = rl.Limit
+		resource.Remaining = rl.Remaining
+		resource.ResetAt = rl.ResetAt
+		resource.Status = rl.Status
+
+		return nil
+	}
+}
+
+func (c *Client) ListUsers(ctx context.Context, pgVars *PaginationVars) ([]User, uint, *v2.RateLimitDescription, error) {
 	u := &url.URL{
 		Scheme: "https",
 		Host:   c.baseHost,
@@ -64,7 +81,7 @@ func (c *Client) ListUsers(ctx context.Context, pgVars *PaginationVars) ([]User,
 
 	req, err := c.httpClient.NewRequest(ctx, http.MethodGet, u)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 
 	params := &url.Values{}
@@ -73,21 +90,23 @@ func (c *Client) ListUsers(ctx context.Context, pgVars *PaginationVars) ([]User,
 	req.URL.RawQuery = params.Encode()
 
 	var res ListResponse[User]
+	var rl v2.RateLimitDescription
 	resp, err := c.httpClient.Do(
 		req,
 		uhttp.WithJSONResponse(&res),
 		uhttp.WithErrorResponse(&ErrorResponse{}),
+		WithRatelimitData(&rl),
 	)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, &rl, err
 	}
 
 	defer resp.Body.Close()
 
-	return res.Items, res.Total, nil
+	return res.Items, res.Total, &rl, nil
 }
 
-func (c *Client) ListRoles(ctx context.Context, pgVars *PaginationVars) ([]Role, uint, error) {
+func (c *Client) ListRoles(ctx context.Context, pgVars *PaginationVars) ([]Role, uint, *v2.RateLimitDescription, error) {
 	u := &url.URL{
 		Scheme: "https",
 		Host:   c.baseHost,
@@ -96,7 +115,7 @@ func (c *Client) ListRoles(ctx context.Context, pgVars *PaginationVars) ([]Role,
 
 	req, err := c.httpClient.NewRequest(ctx, http.MethodGet, u)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 
 	params := &url.Values{}
@@ -105,21 +124,23 @@ func (c *Client) ListRoles(ctx context.Context, pgVars *PaginationVars) ([]Role,
 	req.URL.RawQuery = params.Encode()
 
 	var res ListResponse[Role]
+	var rl v2.RateLimitDescription
 	resp, err := c.httpClient.Do(
 		req,
 		uhttp.WithJSONResponse(&res),
 		uhttp.WithErrorResponse(&ErrorResponse{}),
+		WithRatelimitData(&rl),
 	)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, &rl, err
 	}
 
 	defer resp.Body.Close()
 
-	return res.Items, res.Total, nil
+	return res.Items, res.Total, &rl, nil
 }
 
-func (c *Client) ListGroups(ctx context.Context, pgVars *PaginationVars) ([]string, uint, error) {
+func (c *Client) ListGroups(ctx context.Context, pgVars *PaginationVars) ([]string, uint, *v2.RateLimitDescription, error) {
 	u := &url.URL{
 		Scheme: "https",
 		Host:   c.baseHost,
@@ -128,7 +149,7 @@ func (c *Client) ListGroups(ctx context.Context, pgVars *PaginationVars) ([]stri
 
 	req, err := c.httpClient.NewRequest(ctx, http.MethodGet, u)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 
 	params := &url.Values{}
@@ -139,13 +160,15 @@ func (c *Client) ListGroups(ctx context.Context, pgVars *PaginationVars) ([]stri
 		Items [][]string `json:"data"`
 		Total uint       `json:"total"`
 	}
+	var rl v2.RateLimitDescription
 	resp, err := c.httpClient.Do(
 		req,
 		uhttp.WithJSONResponse(&res),
 		uhttp.WithErrorResponse(&ErrorResponse{}),
+		WithRatelimitData(&rl),
 	)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, &rl, err
 	}
 
 	defer resp.Body.Close()
@@ -155,5 +178,5 @@ func (c *Client) ListGroups(ctx context.Context, pgVars *PaginationVars) ([]stri
 		groups = append(groups, group...)
 	}
 
-	return groups, res.Total, nil
+	return groups, res.Total, &rl, nil
 }

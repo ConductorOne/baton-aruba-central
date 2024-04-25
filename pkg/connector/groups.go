@@ -46,9 +46,9 @@ func (g *groupBuilder) List(ctx context.Context, _ *v2.ResourceId, pToken *pagin
 	}
 
 	pgVars := arubacentral.NewPaginationVars(ResourcesPageSize, offset)
-	groups, total, err := g.client.ListGroups(ctx, pgVars)
+	groups, total, rl, err := g.client.ListGroups(ctx, pgVars)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to list groups: %w", err)
+		return nil, "", annotations.New(rl), fmt.Errorf("failed to list groups: %w", err)
 	}
 
 	var rv []*v2.Resource
@@ -67,7 +67,7 @@ func (g *groupBuilder) List(ctx context.Context, _ *v2.ResourceId, pToken *pagin
 		return nil, "", nil, fmt.Errorf("failed to prepare next page token: %w", err)
 	}
 
-	return rv, next, nil, nil
+	return rv, next, annotations.New(rl), nil
 }
 
 func (g *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
@@ -91,9 +91,9 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	}
 
 	pgVars := arubacentral.NewPaginationVars(ResourcesPageSize, offset)
-	users, total, err := g.client.ListUsers(ctx, pgVars)
+	users, total, rl, err := g.client.ListUsers(ctx, pgVars)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to list users: %w", err)
+		return nil, "", annotations.New(rl), fmt.Errorf("failed to list users: %w", err)
 	}
 
 	var rv []*v2.Grant
@@ -123,7 +123,7 @@ UsersLoop:
 		return nil, "", nil, fmt.Errorf("failed to prepare next page token: %w", err)
 	}
 
-	return rv, next, nil, nil
+	return rv, next, annotations.New(rl), nil
 }
 
 func newGroupBuilder(client *arubacentral.Client) *groupBuilder {

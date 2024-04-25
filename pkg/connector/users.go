@@ -52,9 +52,9 @@ func (u *userBuilder) List(ctx context.Context, _ *v2.ResourceId, pToken *pagina
 	}
 
 	pgVars := arubacentral.NewPaginationVars(ResourcesPageSize, offset)
-	users, total, err := u.client.ListUsers(ctx, pgVars)
+	users, total, rl, err := u.client.ListUsers(ctx, pgVars)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to list users: %w", err)
+		return nil, "", annotations.New(rl), fmt.Errorf("failed to list users: %w", err)
 	}
 
 	var rv []*v2.Resource
@@ -73,7 +73,7 @@ func (u *userBuilder) List(ctx context.Context, _ *v2.ResourceId, pToken *pagina
 		return nil, "", nil, fmt.Errorf("failed to prepare next page token: %w", err)
 	}
 
-	return rv, next, nil, nil
+	return rv, next, annotations.New(rl), nil
 }
 
 // Entitlements always returns an empty slice for users.
