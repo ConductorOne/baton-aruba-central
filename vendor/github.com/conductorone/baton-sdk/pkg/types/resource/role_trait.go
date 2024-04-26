@@ -13,8 +13,6 @@ type RoleTraitOption func(gt *v2.RoleTrait) error
 
 func WithRoleProfile(profile map[string]interface{}) RoleTraitOption {
 	return func(rt *v2.RoleTrait) error {
-		fmt.Printf("\n\nUSING ROLE PROFILE:\n\n", profile)
-
 		p := &structpb.Struct{Fields: make(map[string]*structpb.Value, len(profile))}
 
 		for key, val := range profile {
@@ -22,6 +20,7 @@ func WithRoleProfile(profile map[string]interface{}) RoleTraitOption {
 			if err != nil {
 				return fmt.Errorf("error converting profile data: %w", err)
 			}
+
 			p.Fields[key] = pv
 		}
 
