@@ -1,4 +1,4 @@
-package main
+package connector
 
 import (
 	"bytes"
@@ -27,14 +27,6 @@ type Token struct {
 	ExpiresIn    time.Time
 }
 
-func NewToken(accessToken, refreshToken string, expiresIn time.Time) *Token {
-	return &Token{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    expiresIn,
-	}
-}
-
 type AuthMiddleware struct {
 	Transport http.RoundTripper
 	Token     *Token
@@ -45,16 +37,6 @@ type AuthMiddleware struct {
 	clientSecret string
 }
 
-func NewAuthMiddleware(baseTransport http.RoundTripper, baseHost, clientID, clientSecret string, token *Token) *AuthMiddleware {
-	return &AuthMiddleware{
-		Transport:    baseTransport,
-		Token:        token,
-		baseHost:     baseHost,
-		clientID:     clientID,
-		clientSecret: clientSecret,
-	}
-}
-
 func (m *AuthMiddleware) RoundTrip(req *http.Request) (*http.Response, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -62,7 +44,7 @@ func (m *AuthMiddleware) RoundTrip(req *http.Request) (*http.Response, error) {
 	// check if token is expired
 	if m.Token == nil || m.Token.ExpiresIn.IsZero() || time.Now().After(m.Token.ExpiresIn) {
 		if err := m.refreshToken(req.Context()); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to refresh token: %w", err)
 		}
 	}
 
@@ -87,33 +69,66 @@ func (m *AuthMiddleware) refreshToken(ctx context.Context) error {
 		return err
 	}
 
-	m.Token = NewToken(
-		accessToken,
-		refreshToken,
-		time.Now().Add(time.Duration(expiresIn)*time.Second),
-	)
+	m.Token = &Token{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    time.Now().Add(time.Duration(expiresIn) * time.Second),
+	}
 
 	return nil
 }
 
-func RefreshTokenFlow(ctx context.Context, cfg *config) (*http.Client, error) {
+type OAuthConfig interface {
+	GetClient(ctx context.Context) (*http.Client, error)
+}
+
+type NoConfig struct{}
+
+func (cfg *NoConfig) GetClient(ctx context.Context) (*http.Client, error) {
+	return http.DefaultClient, nil
+}
+
+type BaseConfig struct {
+	BaseHost     string
+	ClientID     string
+	ClientSecret string
+}
+
+type RefreshTokenFlowConfig struct {
+	BaseConfig
+	AccessToken  string
+	RefreshToken string
+}
+
+func (cfg *RefreshTokenFlowConfig) GetClient(ctx context.Context) (*http.Client, error) {
 	httpClient, err := uhttp.NewClient(ctx, uhttp.WithLogger(true, nil))
 	if err != nil {
 		return nil, err
 	}
 
 	return &http.Client{
-		Transport: NewAuthMiddleware(
-			httpClient.Transport,
-			cfg.BaseHost,
-			cfg.ArubaClientID,
-			cfg.ArubaClientSecret,
-			NewToken(cfg.AccessToken, cfg.RefreshToken, time.Time{}),
-		),
+		Transport: &AuthMiddleware{
+			Transport: httpClient.Transport,
+			Token: &Token{
+				AccessToken:  cfg.AccessToken,
+				RefreshToken: cfg.RefreshToken,
+				ExpiresIn:    time.Time{},
+			},
+			baseHost:     cfg.BaseHost,
+			clientID:     cfg.ClientID,
+			clientSecret: cfg.ClientSecret,
+		},
 	}, nil
 }
 
-func CodeFlow(ctx context.Context, cfg *config) (*http.Client, error) {
+type CodeFlowConfig struct {
+	BaseConfig
+	Username   string
+	Password   string
+	CustomerID string
+}
+
+func (cfg *CodeFlowConfig) GetClient(ctx context.Context) (*http.Client, error) {
 	loginURL := &url.URL{
 		Scheme: "https",
 		Host:   cfg.BaseHost,
@@ -147,7 +162,7 @@ func CodeFlow(ctx context.Context, cfg *config) (*http.Client, error) {
 	}
 
 	// 1. login and get CSRF token
-	err = loginAndGetCSRF(ctx, httpClient, loginURL.String(), cfg.ArubaClientID, cfg.Username, cfg.Password)
+	err = loginAndGetCSRF(ctx, httpClient, loginURL.String(), cfg.ClientID, cfg.Username, cfg.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -161,29 +176,29 @@ func CodeFlow(ctx context.Context, cfg *config) (*http.Client, error) {
 	}
 
 	// 2. get auth code
-	authCode, err := getAuthCode(ctx, httpClient, authCodeURL.String(), cfg.ArubaClientID, cfg.CustomerID, csrfToken)
+	authCode, err := getAuthCode(ctx, httpClient, authCodeURL.String(), cfg.ClientID, cfg.CustomerID, csrfToken)
 	if err != nil {
 		return nil, err
 	}
 
 	// 3. exchange auth code for access token
-	accessToken, refreshToken, expiresIn, err := exchangeCodeForToken(ctx, httpClient, tokenURL.String(), cfg.ArubaClientID, cfg.ArubaClientSecret, authCode)
+	accessToken, refreshToken, expiresIn, err := exchangeCodeForToken(ctx, httpClient, tokenURL.String(), cfg.ClientID, cfg.ClientSecret, authCode)
 	if err != nil {
 		return nil, err
 	}
 
 	return &http.Client{
-		Transport: NewAuthMiddleware(
-			httpClient.Transport,
-			cfg.BaseHost,
-			cfg.ArubaClientID,
-			cfg.ArubaClientSecret,
-			NewToken(
-				accessToken,
-				refreshToken,
-				time.Now().Add(time.Duration(expiresIn)*time.Second),
-			),
-		),
+		Transport: &AuthMiddleware{
+			Transport: httpClient.Transport,
+			Token: &Token{
+				AccessToken:  accessToken,
+				RefreshToken: refreshToken,
+				ExpiresIn:    time.Now().Add(time.Duration(expiresIn) * time.Second),
+			},
+			baseHost:     cfg.BaseHost,
+			clientID:     cfg.ClientID,
+			clientSecret: cfg.ClientSecret,
+		},
 	}, nil
 }
 

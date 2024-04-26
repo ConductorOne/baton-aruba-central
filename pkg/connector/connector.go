@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"io"
-	"net/http"
 
 	"github.com/conductorone/baton-aruba-central/pkg/arubacentral"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -45,7 +44,12 @@ func (ac *ArubaCentral) Validate(ctx context.Context) (annotations.Annotations, 
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, httpClient *http.Client, baseHost string) (*ArubaCentral, error) {
+func New(ctx context.Context, baseHost string, cfg OAuthConfig) (*ArubaCentral, error) {
+	httpClient, err := cfg.GetClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	return &ArubaCentral{
 		client: arubacentral.NewClient(httpClient, baseHost),
 	}, nil

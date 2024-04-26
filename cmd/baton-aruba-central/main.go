@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/conductorone/baton-aruba-central/pkg/connector"
@@ -37,27 +36,37 @@ func main() {
 }
 
 func getConnector(ctx context.Context, cfg *config) (types.ConnectorServer, error) {
-	var httpClient *http.Client
+	var oauthConfig connector.OAuthConfig
 	var err error
+
+	base := connector.BaseConfig{
+		BaseHost:     cfg.BaseHost,
+		ClientID:     cfg.ArubaClientID,
+		ClientSecret: cfg.ArubaClientSecret,
+	}
+
 	switch {
 	case cfg.ShouldUseOAuth2CodeFlow():
-		httpClient, err = CodeFlow(ctx, cfg)
-		if err != nil {
-			return nil, err
+		oauthConfig = &connector.CodeFlowConfig{
+			BaseConfig: base,
+			Username:   cfg.Username,
+			Password:   cfg.Password,
+			CustomerID: cfg.CustomerID,
 		}
 
 	case cfg.ShouldUseOAuth2RefreshTokenFlow():
-		httpClient, err = RefreshTokenFlow(ctx, cfg)
-		if err != nil {
-			return nil, err
+		oauthConfig = &connector.RefreshTokenFlowConfig{
+			BaseConfig:   base,
+			AccessToken:  cfg.AccessToken,
+			RefreshToken: cfg.RefreshToken,
 		}
 
 	default:
-		httpClient = http.DefaultClient
+		oauthConfig = &connector.NoConfig{}
 	}
 
 	l := ctxzap.Extract(ctx)
-	cb, err := connector.New(ctx, httpClient, cfg.BaseHost)
+	cb, err := connector.New(ctx, cfg.BaseHost, oauthConfig)
 	if err != nil {
 		l.Error("error creating connector", zap.Error(err))
 		return nil, err
