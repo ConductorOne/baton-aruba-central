@@ -3,12 +3,12 @@ package connector
 import (
 	"context"
 	"io"
+	"net/http"
 
 	"github.com/conductorone/baton-aruba-central/pkg/arubacentral"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
-	"github.com/conductorone/baton-sdk/pkg/uhttp"
 )
 
 type ArubaCentral struct {
@@ -45,12 +45,7 @@ func (ac *ArubaCentral) Validate(ctx context.Context) (annotations.Annotations, 
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, baseHost string, oauthConfig uhttp.AuthCredentials) (*ArubaCentral, error) {
-	httpClient, err := oauthConfig.GetClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func New(ctx context.Context, httpClient *http.Client, baseHost string) (*ArubaCentral, error) {
 	return &ArubaCentral{
 		client: arubacentral.NewClient(httpClient, baseHost),
 	}, nil
