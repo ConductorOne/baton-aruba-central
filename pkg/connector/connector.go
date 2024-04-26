@@ -32,15 +32,21 @@ func (ac *ArubaCentral) Asset(ctx context.Context, asset *v2.AssetRef) (string, 
 // Metadata returns metadata about the connector.
 func (ac *ArubaCentral) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error) {
 	return &v2.ConnectorMetadata{
-		DisplayName: "Aruba Central",
-		Description: "TODO",
+		DisplayName: "ArubaCentral",
+		Description: "Connector syncing ArubaCentral users, roles and groups to Baton",
 	}, nil
 }
 
 // Validate is called to ensure that the connector is properly configured. It should exercise any API credentials
 // to be sure that they are valid.
 func (ac *ArubaCentral) Validate(ctx context.Context) (annotations.Annotations, error) {
-	return nil, nil
+	pgVars := arubacentral.NewPaginationVars(1, 0)
+	_, _, rl, err := ac.client.ListUsers(ctx, pgVars)
+	if err != nil {
+		return annotations.New(rl), err
+	}
+
+	return annotations.New(rl), nil
 }
 
 // New returns a new instance of the connector.
