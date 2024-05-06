@@ -1,34 +1,15 @@
 package arubacentral
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
-	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// toStructpbValue converts a native Go type to a structpb.Value.
-func toStructpbValue(val interface{}) (*structpb.Value, error) {
-	switch v := val.(type) {
-	case string:
-		return structpb.NewStringValue(v), nil
-
-	case int:
-		return structpb.NewNumberValue(float64(v)), nil
-
-	case float64:
-		return structpb.NewNumberValue(v), nil
-
-	default:
-		return nil, fmt.Errorf("unsupported type: %T", v)
-	}
-}
-
-func extractRateLimitData(statusCode int, header *http.Header) (*v2.RateLimitDescription, error) {
+func extractRateLimitData(header *http.Header) (*v2.RateLimitDescription, error) {
 	if header == nil {
 		return nil, nil
 	}

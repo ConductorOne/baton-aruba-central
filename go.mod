@@ -2,8 +2,6 @@ module github.com/conductorone/baton-aruba-central
 
 go 1.22.2
 
-replace github.com/conductorone/baton-sdk => ../baton-sdk
-
 require (
 	github.com/conductorone/baton-sdk v0.1.33
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0

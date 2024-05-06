@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/conductorone/baton-aruba-central/pkg/arubacentral"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -11,7 +12,6 @@ import (
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const RoleMembershipEntitlement = "member"
@@ -22,31 +22,10 @@ type roleBuilder struct {
 }
 
 func roleResource(role *arubacentral.Role) (*v2.Resource, error) {
-	var users structpb.ListValue
-	for _, user := range role.Users {
-		u, err := user.Marshall()
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal user: %w", err)
-		}
-
-		users.Values = append(users.Values, u)
-	}
-
-	var apps structpb.ListValue
-	for _, app := range role.Applications {
-		a, err := app.Marshall()
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal application: %w", err)
-		}
-
-		apps.Values = append(apps.Values, a)
-	}
-
 	profile := map[string]interface{}{
-		"role_name":    role.RoleName,
-		"no_of_users":  role.NoOfUsers,
-		"users":        &users,
-		"applications": &apps,
+		"role_name":   role.RoleName,
+		"no_of_users": role.NoOfUsers,
+		"users":       strings.Join(role.Users, ","),
 	}
 
 	resource, err := rs.NewRoleResource(
@@ -111,18 +90,12 @@ func (r *roleBuilder) Entitlements(ctx context.Context, resource *v2.Resource, _
 
 	rv = append(rv, ent.NewAssignmentEntitlement(resource, RoleMembershipEntitlement, assignmentOptions...))
 
-	// permission entitlements (permission type) - what permissions are granted by this - dynamic based on the role
-	roleTrait, err := rs.GetRoleTrait(resource)
+	roleDetail, rl, err := r.client.GetRole(ctx, resource.DisplayName)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to get role trait: %w", err)
+		return nil, "", annotations.New(rl), fmt.Errorf("failed to get role details: %w", err)
 	}
 
-	apps, ok := getValuesFromProfile(roleTrait.Profile, "applications", &arubacentral.Application{})
-	if !ok {
-		return nil, "", nil, fmt.Errorf("failed to get applications from role profile")
-	}
-
-	for _, app := range apps {
+	for _, app := range roleDetail.Applications {
 		// create permission entitlement for each app and each module
 		permissionOptions := []ent.EntitlementOption{
 			ent.WithGrantableTo(userResourceType),
@@ -148,32 +121,22 @@ func (r *roleBuilder) Entitlements(ctx context.Context, resource *v2.Resource, _
 		}
 	}
 
-	return rv, "", nil, nil
+	return rv, "", annotations.New(rl), nil
 }
 
 func (r *roleBuilder) Grants(ctx context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
-	roleTrait, err := rs.GetRoleTrait(resource)
+	roleDetail, rl, err := r.client.GetRole(ctx, resource.DisplayName)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to get role trait: %w", err)
+		return nil, "", annotations.New(rl), fmt.Errorf("failed to get role details: %w", err)
 	}
 
-	userIDs, ok := getValuesFromProfile(roleTrait.Profile, "users", new(arubacentral.UserString))
-	if !ok {
-		return nil, "", nil, fmt.Errorf("failed to get users from role profile")
-	}
-
-	if len(userIDs) == 0 {
-		return nil, "", nil, nil
-	}
-
-	apps, ok := getValuesFromProfile(roleTrait.Profile, "applications", &arubacentral.Application{})
-	if !ok {
-		return nil, "", nil, fmt.Errorf("failed to get applications from role profile")
+	if roleDetail.NoOfUsers == 0 {
+		return nil, "", annotations.New(rl), nil
 	}
 
 	var rv []*v2.Grant
-	for _, userID := range userIDs {
-		uID, err := rs.NewResourceID(userResourceType, string(*userID))
+	for _, userID := range roleDetail.Users {
+		uID, err := rs.NewResourceID(userResourceType, userID)
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("failed to create user resource id: %w", err)
 		}
@@ -182,7 +145,7 @@ func (r *roleBuilder) Grants(ctx context.Context, resource *v2.Resource, _ *pagi
 		rv = append(rv, grant.NewGrant(resource, RoleMembershipEntitlement, uID))
 
 		// permission grants
-		for _, app := range apps {
+		for _, app := range roleDetail.Applications {
 			appEntitlementName := fmt.Sprintf("%s-%s", app.Name, app.Permission)
 			rv = append(rv, grant.NewGrant(resource, appEntitlementName, uID))
 
@@ -193,7 +156,7 @@ func (r *roleBuilder) Grants(ctx context.Context, resource *v2.Resource, _ *pagi
 		}
 	}
 
-	return rv, "", nil, nil
+	return rv, "", annotations.New(rl), nil
 }
 
 func newRoleBuilder(client *arubacentral.Client) *roleBuilder {

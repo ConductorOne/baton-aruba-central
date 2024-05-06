@@ -13,7 +13,10 @@ import (
 const (
 	UsersEndpoint  = "/platform/rbac/v1/users"
 	RolesEndpoint  = "/platform/rbac/v1/roles"
+	AppsEndpoint   = "/platform/rbac/v1/apps"
 	GroupsEndpoint = "/configuration/v2/groups"
+
+	ArubaCentralApp = "nms"
 )
 
 type Client struct {
@@ -58,7 +61,7 @@ func (e *ErrorResponse) Message() string {
 
 func WithRatelimitData(resource *v2.RateLimitDescription) uhttp.DoOption {
 	return func(resp *uhttp.WrapperResponse) error {
-		rl, err := extractRateLimitData(resp.StatusCode, &resp.Header)
+		rl, err := extractRateLimitData(&resp.Header)
 		if err != nil {
 			return err
 		}
@@ -86,7 +89,7 @@ func (c *Client) ListUsers(ctx context.Context, pgVars *PaginationVars) ([]User,
 
 	params := &url.Values{}
 	pgVars.Apply(params)
-	params.Set("app_name", "nms")
+	params.Set("app_name", ArubaCentralApp)
 	req.URL.RawQuery = params.Encode()
 
 	var res ListResponse[User]
@@ -120,7 +123,7 @@ func (c *Client) ListRoles(ctx context.Context, pgVars *PaginationVars) ([]Role,
 
 	params := &url.Values{}
 	pgVars.Apply(params)
-	params.Set("app_name", "nms")
+	params.Set("app_name", ArubaCentralApp)
 	req.URL.RawQuery = params.Encode()
 
 	var res ListResponse[Role]
@@ -138,6 +141,40 @@ func (c *Client) ListRoles(ctx context.Context, pgVars *PaginationVars) ([]Role,
 	defer resp.Body.Close()
 
 	return res.Items, res.Total, &rl, nil
+}
+
+func (c *Client) GetRole(ctx context.Context, roleName string) (*Role, *v2.RateLimitDescription, error) {
+	rolePath, err := url.JoinPath(AppsEndpoint, ArubaCentralApp, "roles", roleName)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	u := &url.URL{
+		Scheme: "https",
+		Host:   c.baseHost,
+		Path:   rolePath,
+	}
+
+	req, err := c.httpClient.NewRequest(ctx, http.MethodGet, u)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var res Role
+	var rl v2.RateLimitDescription
+	resp, err := c.httpClient.Do(
+		req,
+		uhttp.WithJSONResponse(&res),
+		uhttp.WithErrorResponse(&ErrorResponse{}),
+		WithRatelimitData(&rl),
+	)
+	if err != nil {
+		return nil, &rl, err
+	}
+
+	defer resp.Body.Close()
+
+	return &res, &rl, nil
 }
 
 func (c *Client) ListGroups(ctx context.Context, pgVars *PaginationVars) ([]string, uint, *v2.RateLimitDescription, error) {
