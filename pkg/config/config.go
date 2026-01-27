@@ -20,16 +20,19 @@ var (
 	ClientSecretField = field.StringField(
 		"aruba-central-client-secret",
 		field.WithDescription("The client secret of the OAuth2 application for the Aruba Central API"),
+		field.WithIsSecret(true),
 		field.WithRequired(true),
 	)
 
 	AccessTokenField = field.StringField(
 		"access-token",
 		field.WithDescription("The access token for the Aruba Central API to be used with refresh token flow"),
+		field.WithIsSecret(true),
 	)
 
 	RefreshTokenField = field.StringField(
 		"refresh-token",
+		field.WithIsSecret(true),
 		field.WithDescription("The refresh token for the Aruba Central API to be used with refresh token flow"),
 	)
 
@@ -40,6 +43,7 @@ var (
 
 	PasswordField = field.StringField(
 		"password",
+		field.WithIsSecret(true),
 		field.WithDescription("The password for the Aruba Central API to be used with code flow"),
 	)
 
