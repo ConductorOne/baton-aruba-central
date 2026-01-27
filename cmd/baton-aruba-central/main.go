@@ -7,13 +7,11 @@ import (
 
 	"github.com/conductorone/baton-sdk/pkg/config"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
-	"github.com/conductorone/baton-sdk/pkg/connectorrunner"
 	"github.com/conductorone/baton-sdk/pkg/types"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
-	arubaconfig "github.com/conductorone/baton-aruba-central/pkg/config"
+	cfg "github.com/conductorone/baton-aruba-central/pkg/config"
 	"github.com/conductorone/baton-aruba-central/pkg/connector"
 )
 
@@ -26,8 +24,7 @@ func main() {
 		ctx,
 		"baton-aruba-central",
 		getConnector,
-		arubaconfig.ConfigurationSchema,
-		connectorrunner.WithDefaultCapabilitiesConnectorBuilder(&connector.ArubaCentral{}),
+		cfg.Config,
 	)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -43,29 +40,20 @@ func main() {
 	}
 }
 
-func getConnector(ctx context.Context, v *viper.Viper) (types.ConnectorServer, error) {
+func getConnector(ctx context.Context, c *cfg.ArubaCentral) (types.ConnectorServer, error) {
 	l := ctxzap.Extract(ctx)
 
-	baseHost := v.GetString(arubaconfig.BaseHostField.FieldName)
-	clientID := v.GetString(arubaconfig.ClientIDField.FieldName)
-	clientSecret := v.GetString(arubaconfig.ClientSecretField.FieldName)
-	accessToken := v.GetString(arubaconfig.AccessTokenField.FieldName)
-	refreshToken := v.GetString(arubaconfig.RefreshTokenField.FieldName)
-	username := v.GetString(arubaconfig.UsernameField.FieldName)
-	password := v.GetString(arubaconfig.PasswordField.FieldName)
-	customerID := v.GetString(arubaconfig.CustomerIDField.FieldName)
-
-	useCodeFlow := username != "" && password != "" && customerID != ""
-	useRefreshTokenFlow := accessToken != "" && refreshToken != ""
+	useCodeFlow := c.Username != "" && c.Password != "" && c.CustomerId != ""
+	useRefreshTokenFlow := c.AccessToken != "" && c.RefreshToken != ""
 
 	if !useCodeFlow && !useRefreshTokenFlow {
 		return nil, fmt.Errorf("either username, password, and customer-id or access-token and refresh-token are required")
 	}
 
 	base := connector.BaseConfig{
-		BaseHost:     baseHost,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
+		BaseHost:     c.ApiBaseHost,
+		ClientID:     c.ArubaCentralClientId,
+		ClientSecret: c.ArubaCentralClientSecret,
 	}
 
 	var oauthConfig connector.OAuthConfig
@@ -74,30 +62,30 @@ func getConnector(ctx context.Context, v *viper.Viper) (types.ConnectorServer, e
 	case useCodeFlow:
 		oauthConfig = &connector.CodeFlowConfig{
 			BaseConfig: base,
-			Username:   username,
-			Password:   password,
-			CustomerID: customerID,
+			Username:   c.Username,
+			Password:   c.Password,
+			CustomerID: c.CustomerId,
 		}
 
 	case useRefreshTokenFlow:
 		oauthConfig = &connector.RefreshTokenFlowConfig{
 			BaseConfig:   base,
-			AccessToken:  accessToken,
-			RefreshToken: refreshToken,
+			AccessToken:  c.AccessToken,
+			RefreshToken: c.RefreshToken,
 		}
 	}
 
-	cb, err := connector.New(ctx, baseHost, oauthConfig)
+	cb, err := connector.New(ctx, c.ApiBaseHost, oauthConfig)
 	if err != nil {
 		l.Error("error creating connector", zap.Error(err))
 		return nil, err
 	}
 
-	c, err := connectorbuilder.NewConnector(ctx, cb)
+	conn, err := connectorbuilder.NewConnector(ctx, cb)
 	if err != nil {
 		l.Error("error creating connector", zap.Error(err))
 		return nil, err
 	}
 
-	return c, nil
+	return conn, nil
 }
