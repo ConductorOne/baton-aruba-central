@@ -2,15 +2,16 @@ package c1api
 
 import (
 	"context"
-	"fmt"
+	"errors"
+
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	v1 "github.com/conductorone/baton-sdk/pb/c1/connectorapi/baton/v1"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/types"
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
-	"go.uber.org/zap"
-	"google.golang.org/protobuf/proto"
 )
 
 type getTicketTaskHelpers interface {
@@ -24,28 +25,42 @@ type getTicketTaskHandler struct {
 }
 
 func (c *getTicketTaskHandler) HandleTask(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "getTicketTaskHandler.HandleTask")
+	defer span.End()
+
 	l := ctxzap.Extract(ctx)
 
 	cc := c.helpers.ConnectorClient()
 
-	ticket, err := cc.GetTicket(ctx, &v2.TicketsServiceGetTicketRequest{
-		Id: c.task.GetId(),
-	})
+	t := c.task.GetGetTicket()
+	if t == nil || t.GetTicketId() == "" {
+		l.Error("get ticket task was nil or missing ticket id", zap.Any("get_ticket_task", t))
+		return c.helpers.FinishTask(ctx, nil, nil, errors.Join(errors.New("malformed get ticket task"), ErrTaskNonRetryable))
+	}
+
+	ticket, err := cc.GetTicket(ctx, v2.TicketsServiceGetTicketRequest_builder{
+		Id: t.GetTicketId(),
+	}.Build())
 	if err != nil {
-		return err
+		return c.helpers.FinishTask(ctx, nil, t.GetAnnotations(), err)
 	}
 
 	if ticket.GetTicket() == nil {
-		return fmt.Errorf("connector returned empt ticket schema")
+		return c.helpers.FinishTask(ctx, nil, t.GetAnnotations(), errors.Join(errors.New("connector returned empty ticket"), ErrTaskNonRetryable))
 	}
 
-	resp := &v2.TicketsServiceGetTicketResponse{
+	resp := v2.TicketsServiceGetTicketResponse_builder{
 		Ticket: ticket.GetTicket(),
-	}
+	}.Build()
+
+	respAnnos := annotations.Annotations(resp.GetAnnotations())
+	respAnnos.Merge(t.GetAnnotations()...)
+
+	resp.SetAnnotations(respAnnos)
 
 	l.Debug("GetTicket response", zap.Any("resp", resp))
 
-	return c.helpers.FinishTask(ctx, resp, resp.GetAnnotations(), nil)
+	return c.helpers.FinishTask(ctx, resp, respAnnos, nil)
 }
 
 func newGetTicketTaskHandler(task *v1.Task, helpers getTicketTaskHelpers) *getTicketTaskHandler {
