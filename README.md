@@ -1,16 +1,16 @@
 ![Baton Logo](./docs/images/baton-logo.png)
 
-# `baton-aruba-central` [![Go Reference](https://pkg.go.dev/badge/github.com/conductorone/baton-aruba-central.svg)](https://pkg.go.dev/github.com/conductorone/baton-aruba-central) ![main ci](https://github.com/conductorone/baton-aruba-central/actions/workflows/main.yaml/badge.svg)
+# `baton-aruba-central` [![Go Reference](https://pkg.go.dev/badge/github.com/conductorone/baton-aruba-central.svg)](https://pkg.go.dev/github.com/conductorone/baton-aruba-central) ![ci](https://github.com/conductorone/baton-aruba-central/actions/workflows/ci.yaml/badge.svg) ![verify](https://github.com/conductorone/baton-aruba-central/actions/workflows/verify.yaml/badge.svg)
 
-`baton-aruba-central` is a connector for ArubaCentral built using the [Baton SDK](https://github.com/conductorone/baton-sdk). It communicates with the ArubaCentral API, to sync data about users, roles and groups. 
+`baton-aruba-central` is a connector for ArubaCentral built using the [Baton SDK](https://github.com/conductorone/baton-sdk). It communicates with the ArubaCentral API, to sync data about users, roles and groups.
 
 Check out [Baton](https://github.com/conductorone/baton) to learn more about the project in general.
 
 # Prerequisites
 
-To be able to work with the connector, you need to have an API Gateway set up in Aruba Central instance. This API Gateway gives you an ability to create client applications along with a token. You can set this up in the Aruba Central UI by going to `Organization` in the main left sidebar menu, then choosing `Platform Integration` tab at the top. Here you can see the API Gateway window with link `Rest API` which will take you to another page where you can manage your API client applications. You can also find here your base hostname on which you can find documentation and on which you can acess the Rest API. You can also use the following [link](https://developer.arubanetworks.com/aruba-central/docs/api-gateway) to get more information about the API Gateway. 
+To be able to work with the connector, you need to have an API Gateway set up in Aruba Central instance. This API Gateway gives you an ability to create client applications along with a token. You can set this up in the Aruba Central UI by going to `Organization` in the main left sidebar menu, then choosing `Platform Integration` tab at the top. Here you can see the API Gateway window with link `Rest API` which will take you to another page where you can manage your API client applications. You can also find here your base hostname on which you can find documentation and on which you can acess the Rest API. You can also use the following [link](https://developer.arubanetworks.com/aruba-central/docs/api-gateway) to get more information about the API Gateway.
 
-Connector enables two ways of authentication with the Aruba Central API. Both ways require you to have a client ID and client secret. Once you have the API Gateway set up, you can create a new client application and get the client ID and client secret. 
+Connector enables two ways of authentication with the Aruba Central API. Both ways require you to have a client ID and client secret. Once you have the API Gateway set up, you can create a new client application and get the client ID and client secret.
 
 You can then use along the client ID and client secret, your username, password and customer ID to authenticate through OAuth Code Flow that automatically retrieves the refresh token and access token. Customer ID is available in the Aruba Central UI in the top right corner of the screen.
 
