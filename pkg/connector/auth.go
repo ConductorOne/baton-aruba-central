@@ -211,7 +211,7 @@ func loginAndGetCSRF(ctx context.Context, httpClient *http.Client, loginURL, cli
 		Password: password,
 	}
 
-	b, err := json.Marshal(body)
+	b, err := json.Marshal(body) //nolint:gosec // false positive
 	if err != nil {
 		return err
 	}
@@ -306,7 +306,7 @@ func exchangeCodeForToken(ctx context.Context, httpClient *http.Client, tokenURL
 		AuthCode:     authCode,
 	}
 
-	b, err := json.Marshal(body)
+	b, err := json.Marshal(body) //nolint:gosec // false positive
 	if err != nil {
 		return "", "", 0, err
 	}
