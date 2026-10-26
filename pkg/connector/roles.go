@@ -8,7 +8,7 @@ import (
 	"github.com/conductorone/baton-aruba-central/pkg/arubacentral"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
-	"github.com/conductorone/baton-sdk/pkg/pagination"
+	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
@@ -21,8 +21,10 @@ type roleBuilder struct {
 	resourceType *v2.ResourceType
 }
 
+var _ connectorbuilder.ResourceSyncerV2 = &roleBuilder{}
+
 func roleResource(role *arubacentral.Role) (*v2.Resource, error) {
-	profile := map[string]interface{}{
+	profile := map[string]any{
 		"role_name":   role.RoleName,
 		"no_of_users": role.NoOfUsers,
 		"users":       strings.Join(role.Users, ","),
@@ -32,9 +34,8 @@ func roleResource(role *arubacentral.Role) (*v2.Resource, error) {
 		role.RoleName,
 		roleResourceType,
 		slugify(role.RoleName),
-		[]rs.RoleTraitOption{
-			rs.WithRoleProfile(profile),
-		},
+		nil,
+		rs.WithResourceProfile(profile),
 	)
 	if err != nil {
 		return nil, err
@@ -47,23 +48,25 @@ func (r *roleBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return roleResourceType
 }
 
-func (r *roleBuilder) List(ctx context.Context, _ *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	bag, offset, err := parsePageToken(pToken.Token, &v2.ResourceId{ResourceType: r.resourceType.Id})
+func (r *roleBuilder) List(ctx context.Context, _ *v2.ResourceId, opts rs.SyncOpAttrs) ([]*v2.Resource, *rs.SyncOpResults, error) {
+	annos := annotations.New()
+	bag, offset, err := parsePageToken(opts.PageToken.Token, &v2.ResourceId{ResourceType: r.resourceType.Id})
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to parse page token: %w", err)
+		return nil, &rs.SyncOpResults{Annotations: annos}, fmt.Errorf("failed to parse page token: %w", err)
 	}
 
 	pgVars := arubacentral.NewPaginationVars(ResourcesPageSize, offset)
 	roles, total, rl, err := r.client.ListRoles(ctx, pgVars)
+	annos.Update(rl)
 	if err != nil {
-		return nil, "", annotations.New(rl), fmt.Errorf("failed to list roles: %w", err)
+		return nil, &rs.SyncOpResults{Annotations: annos}, fmt.Errorf("failed to list roles: %w", err)
 	}
 
 	var rv []*v2.Resource
 	for _, role := range roles {
 		resource, err := roleResource(&role) // #nosec G601
 		if err != nil {
-			return nil, "", nil, fmt.Errorf("failed to create role resource: %w", err)
+			return nil, &rs.SyncOpResults{Annotations: annos}, fmt.Errorf("failed to create role resource: %w", err)
 		}
 
 		rv = append(rv, resource)
@@ -72,13 +75,14 @@ func (r *roleBuilder) List(ctx context.Context, _ *v2.ResourceId, pToken *pagina
 	nextToken := prepareNextToken(offset, total)
 	next, err := bag.NextToken(nextToken)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to create next token: %w", err)
+		return nil, &rs.SyncOpResults{Annotations: annos}, fmt.Errorf("failed to create next token: %w", err)
 	}
 
-	return rv, next, annotations.New(rl), nil
+	return rv, &rs.SyncOpResults{Annotations: annos, NextPageToken: next}, nil
 }
 
-func (r *roleBuilder) Entitlements(ctx context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
+func (r *roleBuilder) Entitlements(ctx context.Context, resource *v2.Resource, opts rs.SyncOpAttrs) ([]*v2.Entitlement, *rs.SyncOpResults, error) {
+	annos := annotations.New()
 	var rv []*v2.Entitlement
 
 	// membership entitlements (assignment type) - what users are under this - manual
@@ -91,8 +95,9 @@ func (r *roleBuilder) Entitlements(ctx context.Context, resource *v2.Resource, _
 	rv = append(rv, ent.NewAssignmentEntitlement(resource, RoleMembershipEntitlement, assignmentOptions...))
 
 	roleDetail, rl, err := r.client.GetRole(ctx, resource.DisplayName)
+	annos.Update(rl)
 	if err != nil {
-		return nil, "", annotations.New(rl), fmt.Errorf("failed to get role details: %w", err)
+		return nil, &rs.SyncOpResults{Annotations: annos}, fmt.Errorf("failed to get role details: %w", err)
 	}
 
 	for _, app := range roleDetail.Applications {
@@ -121,24 +126,26 @@ func (r *roleBuilder) Entitlements(ctx context.Context, resource *v2.Resource, _
 		}
 	}
 
-	return rv, "", annotations.New(rl), nil
+	return rv, &rs.SyncOpResults{Annotations: annos}, nil
 }
 
-func (r *roleBuilder) Grants(ctx context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+func (r *roleBuilder) Grants(ctx context.Context, resource *v2.Resource, opts rs.SyncOpAttrs) ([]*v2.Grant, *rs.SyncOpResults, error) {
+	annos := annotations.New()
 	roleDetail, rl, err := r.client.GetRole(ctx, resource.DisplayName)
+	annos.Update(rl)
 	if err != nil {
-		return nil, "", annotations.New(rl), fmt.Errorf("failed to get role details: %w", err)
+		return nil, &rs.SyncOpResults{Annotations: annos}, fmt.Errorf("failed to get role details: %w", err)
 	}
 
 	if roleDetail.NoOfUsers == 0 {
-		return nil, "", annotations.New(rl), nil
+		return nil, &rs.SyncOpResults{Annotations: annos}, nil
 	}
 
 	var rv []*v2.Grant
 	for _, userID := range roleDetail.Users {
 		uID, err := rs.NewResourceID(userResourceType, userID)
 		if err != nil {
-			return nil, "", nil, fmt.Errorf("failed to create user resource id: %w", err)
+			return nil, &rs.SyncOpResults{Annotations: annos}, fmt.Errorf("failed to create user resource id: %w", err)
 		}
 
 		// membership grants
@@ -156,7 +163,7 @@ func (r *roleBuilder) Grants(ctx context.Context, resource *v2.Resource, _ *pagi
 		}
 	}
 
-	return rv, "", annotations.New(rl), nil
+	return rv, &rs.SyncOpResults{Annotations: annos}, nil
 }
 
 func newRoleBuilder(client *arubacentral.Client) *roleBuilder {

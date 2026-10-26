@@ -2,11 +2,15 @@ package connector
 
 import (
 	"context"
+	"fmt"
 	"io"
+
+	cfg "github.com/conductorone/baton-aruba-central/pkg/config"
 
 	"github.com/conductorone/baton-aruba-central/pkg/arubacentral"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
+	"github.com/conductorone/baton-sdk/pkg/cli"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
 )
 
@@ -14,9 +18,11 @@ type ArubaCentral struct {
 	client *arubacentral.Client
 }
 
+var _ connectorbuilder.ConnectorBuilderV2 = &ArubaCentral{}
+
 // ResourceSyncers returns a ResourceSyncer for each resource type that should be synced from the upstream service.
-func (ac *ArubaCentral) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
-	return []connectorbuilder.ResourceSyncer{
+func (ac *ArubaCentral) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncerV2 {
+	return []connectorbuilder.ResourceSyncerV2{
 		newUserBuilder(ac.client),
 		newRoleBuilder(ac.client),
 		newGroupBuilder(ac.client),
@@ -50,13 +56,45 @@ func (ac *ArubaCentral) Validate(ctx context.Context) (annotations.Annotations, 
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, baseHost string, cfg OAuthConfig) (*ArubaCentral, error) {
-	httpClient, err := cfg.GetClient(ctx)
+func New(ctx context.Context, cfg *cfg.ArubaCentral, opts *cli.ConnectorOpts) (connectorbuilder.ConnectorBuilderV2, []connectorbuilder.Opt, error) {
+	useCodeFlow := cfg.Username != "" && cfg.Password != "" && cfg.CustomerId != ""
+	useRefreshTokenFlow := cfg.AccessToken != "" && cfg.RefreshToken != ""
+
+	if !useCodeFlow && !useRefreshTokenFlow {
+		return nil, nil, fmt.Errorf("either username, password, and customer-id or access-token and refresh-token are required")
+	}
+
+	base := BaseConfig{
+		BaseHost:     cfg.ApiBaseHost,
+		ClientID:     cfg.ArubaCentralClientId,
+		ClientSecret: cfg.ArubaCentralClientSecret,
+	}
+
+	var oauthConfig OAuthConfig
+
+	switch {
+	case useCodeFlow:
+		oauthConfig = &CodeFlowConfig{
+			BaseConfig: base,
+			Username:   cfg.Username,
+			Password:   cfg.Password,
+			CustomerID: cfg.CustomerId,
+		}
+
+	case useRefreshTokenFlow:
+		oauthConfig = &RefreshTokenFlowConfig{
+			BaseConfig:   base,
+			AccessToken:  cfg.AccessToken,
+			RefreshToken: cfg.RefreshToken,
+		}
+	}
+
+	httpClient, err := oauthConfig.GetClient(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return &ArubaCentral{
-		client: arubacentral.NewClient(httpClient, baseHost),
-	}, nil
+		client: arubacentral.NewClient(httpClient, base.BaseHost),
+	}, nil, nil
 }
